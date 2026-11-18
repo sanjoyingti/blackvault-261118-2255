@@ -1,6 +1,5 @@
+=== ABOUT: The launcher icon background colour (pure black) ===
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="vault_black">#FF000000</color>
-    <color name="vault_green">#FF00FF88</color>
-    <color name="vault_red">#FFFF3B30</color>
+    <color name="ic_launcher_background">#000000</color>
 </resources>
