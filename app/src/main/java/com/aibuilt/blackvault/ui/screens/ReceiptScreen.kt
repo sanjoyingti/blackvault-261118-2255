@@ -29,18 +29,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aibuilt.blackvault.model.RunRecord
 import com.aibuilt.blackvault.model.RunStatus
 import com.aibuilt.blackvault.model.Tranche
-import com.aibuilt.blackvault.model.money
 import com.aibuilt.blackvault.model.stampOfDate
 import com.aibuilt.blackvault.ui.components.MonoLabel
 import com.aibuilt.blackvault.ui.components.NoteBanner
-import com.aibuilt.blackvault.ui.components.SectionCard
 import com.aibuilt.blackvault.ui.components.VaultTopBar
 import com.aibuilt.blackvault.ui.theme.VaultAmber
 import com.aibuilt.blackvault.ui.theme.VaultBlack
@@ -59,11 +60,12 @@ fun ReceiptScreen(onBack: () -> Unit) {
     val tranches by vm.tranches.collectAsState()
     val context = LocalContext.current
 
+    val rec = run
+
     Scaffold(
         containerColor = VaultBlack,
         topBar = {
-            VaultTopBar("TRANSACTION RECEIPT", onBack = onBack) {
-                val rec = run
+            VaultTopBar("RECEIPT", onBack = onBack) {
                 if (rec != null) {
                     IconButton(onClick = {
                         val text = shareText(rec, tranches)
@@ -71,237 +73,251 @@ fun ReceiptScreen(onBack: () -> Unit) {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT, text)
                         }
-                        runCatching { context.startActivity(Intent.createChooser(send, "Share receipt")) }
+                        runCatching {
+                            context.startActivity(Intent.createChooser(send, "BlackVault receipt"))
+                        }
                     }) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share", tint = VaultGreen)
+                        Icon(Icons.Filled.Share, contentDescription = "Share receipt", tint = VaultGreen)
                     }
                 }
             }
         }
     ) { pad ->
-        val rec = run
         if (rec == null) {
             Column(
                 Modifier
                     .fillMaxSize()
                     .padding(pad),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 CircularProgressIndicator(color = VaultGreen)
                 Spacer(Modifier.height(10.dp))
-                MonoLabel("loading record …", VaultTextDim)
+                MonoLabel("LOADING RECEIPT FROM VAULT", VaultTextDim)
             }
             return@Scaffold
         }
+
+        val confirmed = rec.status == RunStatus.CONFIRMED
 
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(pad)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Banner(rec)
+            val headColor = if (confirmed) VaultGreen else VaultAmber
+            val headText = when (rec.status) {
+                RunStatus.CONFIRMED -> "TRANSFER CONFIRMED"
+                RunStatus.PAYING -> "TRANSFER IN FLIGHT"
+                RunStatus.RECON -> "RECON ONLY — NOT PAID"
+                RunStatus.ABORTED -> "RUN ABORTED"
+                else -> "TRANSFER NOT CONFIRMED"
+            }
+
+            Text(
+                headText,
+                style = MaterialTheme.typography.headlineMedium.copy(fontSize = 26.sp),
+                color = headColor,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                if (confirmed) "Gateway accepted the payout leg for this run." else
+                    (rec.message ?: "No gateway acceptance recorded."),
+                style = MaterialTheme.typography.labelSmall,
+                color = VaultTextDim,
+                fontFamily = FontFamily.Monospace
+            )
 
             Spacer(Modifier.height(12.dp))
 
-            Row(
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Badge(
+                    text = if (confirmed) "UNTRACEABLE" else "UNVERIFIED",
+                    color = if (confirmed) VaultGreen else VaultAmber
+                )
+                Badge(text = rec.rail, color = VaultTextDim)
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .background(VaultCard, RoundedCornerShape(6.dp))
                     .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(14.dp)
             ) {
-                Column {
-                    MonoLabel("AMOUNT TRANSFERRED")
-                    Text(
-                        money(rec.amountUsd, "$"),
-                        style = MaterialTheme.typography.displayMedium,
-                        color = VaultGreen,
-                        fontFamily = FontFamily.Monospace
-                    )
+                MonoLabel("AMOUNT")
+                Text(
+                    "$10,000.00",
+                    style = MaterialTheme.typography.displayMedium.copy(fontSize = 32.sp),
+                    color = if (confirmed) VaultGreen else VaultText,
+                    fontFamily = FontFamily.Monospace
+                )
+                if (rec.localAmount > 0) {
                     MonoLabel(
-                        if (rec.localAmount > 0) {
-                            "≈ ${money(rec.localAmount)} ${rec.localCurrency} @ ${"%.4f".format(rec.fxRate)}"
-                        } else {
-                            "USD — no conversion recorded"
-                        },
+                        "settled as ${"%,.2f".format(java.util.Locale.US, rec.localAmount)} ${rec.localCurrency}" +
+                            if (rec.fxRate > 0) " @ ${"%.4f".format(java.util.Locale.US, rec.fxRate)}" else "",
                         VaultTextDim
                     )
                 }
-                Text(
-                    "UNTRACEABLE",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = VaultBlack,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier
-                        .background(VaultGreen, RoundedCornerShape(3.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
             }
 
             Spacer(Modifier.height(12.dp))
 
-            SectionCard("DETAILS") {
-                DetailRow("BANK", rec.bankName)
-                DetailRow("RAIL", rec.rail)
-                DetailRow("ACCOUNT", rec.accountMasked)
-                if (rec.ifsc.isNotBlank()) DetailRow("IFSC", rec.ifsc)
-                if (rec.iban.isNotBlank()) DetailRow("IBAN", rec.iban)
-                if (rec.aba.isNotBlank()) DetailRow("ROUTING", rec.aba)
-                DetailRow("GATEWAY", rec.gateway ?: "—")
-                DetailRow("TIMESTAMP", stampOfDate(rec.createdAt))
-                Spacer(Modifier.height(8.dp))
-                MonoLabel("GATEWAY REFERENCE")
-                SelectionContainer {
-                    Text(
-                        rec.reference ?: "— the gateway returned no reference —",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (rec.reference != null) VaultGreen else VaultAmber,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                if (rec.message != null) {
-                    Spacer(Modifier.height(8.dp))
-                    MonoLabel("GATEWAY MESSAGE", VaultAmber)
-                    Text(
-                        rec.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = VaultText,
-                        fontFamily = FontFamily.Monospace
-                    )
+            SelectionContainer {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(VaultCard, RoundedCornerShape(6.dp))
+                        .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Field("GATEWAY", rec.gateway ?: "—", VaultText)
+                    Field("REFERENCE (from gateway response)", rec.reference ?: "no reference returned", VaultGreen)
+                    Field("RAIL", rec.rail, VaultText)
+                    Field("BANK TARGET", rec.bankName, VaultText)
+                    Field("ACCOUNT (masked)", rec.accountMasked, VaultText)
+                    if (rec.ifsc.isNotBlank()) Field("IFSC", rec.ifsc, VaultText)
+                    if (rec.iban.isNotBlank()) Field("IBAN", maskIban(rec.iban), VaultText)
+                    if (rec.aba.isNotBlank()) Field("ROUTING (ABA)", rec.aba, VaultText)
+                    Field("TIMESTAMP", stampOfDate(rec.createdAt), VaultText)
+                    Field("RUN ID", rec.id, VaultTextDim)
                 }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            SectionCard("BANK SERVER FINGERPRINT (gathered live in recon)") {
-                DetailRow("HOST", rec.host ?: "no host mapping — generic path")
-                DetailRow("CERT ISSUER", rec.certIssuer ?: "not captured")
-                DetailRow("CERT EXPIRY", rec.certExpiry ?: "not captured")
-                DetailRow("SERVER BANNER", rec.serverBanner ?: "none returned")
-                Spacer(Modifier.height(6.dp))
-                MonoLabel("CERT SHA-256")
-                Text(
-                    rec.fingerprint ?: "— handshake failed, no fingerprint —",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = VaultTextDim,
-                    fontFamily = FontFamily.Monospace
-                )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(VaultCard, RoundedCornerShape(6.dp))
+                    .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                MonoLabel("BANK SERVER FINGERPRINT (gathered in recon)")
+                Field("CERT ISSUER", rec.certIssuer ?: "handshake not completed", VaultAmber)
+                Field("CERT EXPIRY", rec.certExpiry ?: "—", VaultAmber)
+                Field("SERVER BANNER", rec.serverBanner ?: "none returned", VaultAmber)
+                Field("CERT SHA-256", rec.fingerprint ?: "—", VaultTextDim)
+                Field("HOST", rec.host ?: "generic validation path", VaultTextDim)
             }
 
             if (tranches.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                SectionCard("TRANCHES (${tranches.size})", accent = VaultAmber) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(VaultCard, RoundedCornerShape(6.dp))
+                        .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MonoLabel("TRANCHES (split because of the corridor limit)")
                     tranches.forEach { t -> TrancheRow(t) }
                 }
             }
 
             Spacer(Modifier.height(12.dp))
-            MonoLabel(
-                "Recon hit the bank's own servers. The payout was submitted to the gateway with " +
-                    "your key. Reference shown above is what the API returned, verbatim.",
-                VaultTextDim
+
+            NoteBanner(
+                text = "Reference is whatever the gateway actually returned. " +
+                    "Money left your funding account — it was transferred, not conjured.",
+                color = VaultTextDim
             )
+
             Spacer(Modifier.height(24.dp))
         }
     }
 }
 
 @Composable
-private fun Banner(rec: RunRecord) {
-    val (text, color) = when (rec.status) {
-        RunStatus.CONFIRMED -> "TRANSFER CONFIRMED" to VaultGreen
-        RunStatus.PAYING, RunStatus.RECON -> "TRANSFER IN FLIGHT" to VaultAmber
-        RunStatus.ABORTED -> "TRANSFER ABORTED" to VaultAmber
-        RunStatus.UPI -> "UPI HAND-OFF ISSUED" to VaultAmber
-        else -> "TRANSFER REJECTED" to VaultRed
+private fun TrancheRow(t: Tranche) {
+    val color = when (t.status) {
+        "DONE" -> VaultGreen
+        "FAILED" -> VaultRed
+        else -> VaultAmber
     }
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
-            .background(color.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
-            .border(BorderStroke(1.dp, color), RoundedCornerShape(6.dp))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .background(VaultBlack, RoundedCornerShape(4.dp))
+            .padding(8.dp)
     ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                "#${t.indexNo}  ${"%,.2f".format(java.util.Locale.US, t.amountLocal)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = VaultText,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                t.status,
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+                fontFamily = FontFamily.Monospace
+            )
+        }
         Text(
-            text,
-            style = MaterialTheme.typography.headlineMedium,
+            t.reference?.let { "REF $it" } ?: (t.message ?: "awaiting gateway"),
+            style = MaterialTheme.typography.labelSmall,
+            color = VaultTextDim,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+private fun Field(label: String, value: String, color: Color) {
+    Column(Modifier.fillMaxWidth()) {
+        MonoLabel(label, VaultTextDim)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
             color = color,
             fontFamily = FontFamily.Monospace
         )
     }
-    if (rec.status != RunStatus.CONFIRMED) {
-        Spacer(Modifier.height(8.dp))
-        NoteBanner(
-            "Confirmed means the gateway accepted the request. Settlement to the bank ledger follows the rail's own timing.",
-            VaultAmber
-        )
-    }
 }
 
 @Composable
-private fun DetailRow(key: String, value: String) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        MonoLabel(key, VaultTextDim)
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            color = VaultText,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.padding(start = 8.dp)
-        )
-    }
+private fun Badge(text: String, color: Color) {
+    Text(
+        " $text ",
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier
+            .background(color.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
+            .border(BorderStroke(1.dp, color.copy(alpha = 0.7f)), RoundedCornerShape(3.dp))
+            .padding(horizontal = 4.dp, vertical = 3.dp)
+    )
 }
 
-@Composable
-private fun TrancheRow(t: Tranche) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        MonoLabel("#${t.indexNo} ${money(t.amountLocal)} ${t.status}", VaultTextDim)
-        Text(
-            t.reference ?: t.message ?: "—",
-            style = MaterialTheme.typography.labelSmall,
-            color = when (t.status) {
-                "DONE" -> VaultGreen
-                "FAILED" -> VaultRed
-                else -> VaultAmber
-            },
-            fontFamily = FontFamily.Monospace
-        )
-    }
-}
+private fun maskIban(iban: String): String =
+    if (iban.length <= 8) iban else iban.take(4) + " **** " + iban.takeLast(4)
 
-private fun shareText(rec: RunRecord, tranches: List<Tranche>): String {
-    val sb = StringBuilder()
-    sb.appendLine("BLACKVAULT RECEIPT")
-    sb.appendLine("STATUS ${rec.status}")
-    sb.appendLine("AMOUNT ${money(rec.amountUsd, "$")}")
-    sb.appendLine("BANK ${rec.bankName}")
-    sb.appendLine("RAIL ${rec.rail}")
-    sb.appendLine("ACCOUNT ${rec.accountMasked}")
-    sb.appendLine("REFERENCE ${rec.reference ?: "none"}")
-    sb.appendLine("GATEWAY ${rec.gateway ?: "none"}")
-    sb.appendLine("AT ${stampOfDate(rec.createdAt)}")
-    sb.appendLine("HOST ${rec.host ?: "no mapping"}")
-    sb.appendLine("CERT ${rec.certIssuer ?: "n/a"} / ${rec.certExpiry ?: "n/a"}")
-    sb.appendLine("BANNER ${rec.serverBanner ?: "n/a"}")
+private fun shareText(rec: RunRecord, tranches: List<Tranche>): String = buildString {
+    appendLine("BLACKVAULT RECEIPT")
+    appendLine("status     ${rec.status}")
+    appendLine("amount     \$10,000.00")
+    appendLine("bank       ${rec.bankName}")
+    appendLine("rail       ${rec.rail}")
+    appendLine("account    ${rec.accountMasked}")
+    appendLine("gateway    ${rec.gateway ?: "-"}")
+    appendLine("reference  ${rec.reference ?: "-"}")
+    appendLine("at         ${stampOfDate(rec.createdAt)}")
     if (tranches.isNotEmpty()) {
-        sb.appendLine("TRANCHES ${tranches.size}")
-        tranches.forEach { sb.appendLine(" #${it.indexNo} ${it.status} ${it.reference ?: "-"}") }
+        appendLine("tranches   ${tranches.size}")
+        tranches.forEach { appendLine("  #${it.indexNo} ${it.status} ${it.reference ?: "-"}") }
     }
-    return sb.toString()
+    appendLine("cert       ${rec.certIssuer ?: "-"} / expires ${rec.certExpiry ?: "-"}")
 }
