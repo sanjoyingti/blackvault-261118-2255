@@ -1,9 +1,6 @@
-=== ABOUT: The history list — every run with bank, masked account, amount and reference; tap to reopen the receipt, swipe left to delete ===
 package com.aibuilt.blackvault.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,17 +17,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -48,13 +44,11 @@ import com.aibuilt.blackvault.ui.theme.VaultAmber
 import com.aibuilt.blackvault.ui.theme.VaultBlack
 import com.aibuilt.blackvault.ui.theme.VaultCard
 import com.aibuilt.blackvault.ui.theme.VaultGreen
-import com.aibuilt.blackvault.ui.theme.VaultGrey
 import com.aibuilt.blackvault.ui.theme.VaultRed
 import com.aibuilt.blackvault.ui.theme.VaultText
 import com.aibuilt.blackvault.ui.theme.VaultTextDim
 import com.aibuilt.blackvault.viewmodel.HistoryViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
     val vm: HistoryViewModel = viewModel()
@@ -62,89 +56,75 @@ fun HistoryScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
 
     Scaffold(
         containerColor = VaultBlack,
-        topBar = { VaultTopBar("RUN HISTORY", onBack = onBack) }
+        topBar = { VaultTopBar("RUN LOG // ${runs.size}", onBack = onBack) }
     ) { pad ->
-        if (runs.isEmpty()) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(pad)
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    MonoLabel("NO RUNS STORED YET", VaultTextDim)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Every payout attempt is written here, encrypted at rest.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = VaultTextDim,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    TextButton(onClick = onBack) {
-                        Text("BACK TO PAY", color = VaultGreen, fontFamily = FontFamily.Monospace)
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(pad)
+                .padding(horizontal = 12.dp)
+        ) {
+            MonoLabel("Swipe a row left to shred it. Tap to re-open the full receipt.", VaultTextDim)
+            Spacer(Modifier.height(8.dp))
+
+            if (runs.isEmpty()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "NO RUNS RECORDED",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = VaultTextDim,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        MonoLabel("Every recon + payout attempt lands here.", VaultTextDim)
                     }
                 }
-            }
-        } else {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(pad)
-            ) {
-                MonoLabel(
-                    "SWIPE A ROW LEFT TO DELETE — TAP TO REOPEN THE RECEIPT",
-                    VaultTextDim,
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
+            } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 16.dp, end = 16.dp, bottom = 24.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
                 ) {
                     items(runs, key = { it.id }) { rec ->
-                        val state = rememberSwipeToDismissBoxState()
-                        LaunchedEffect(state.currentValue) {
-                            if (state.currentValue == SwipeToDismissBoxValue.EndToStart ||
-                                state.currentValue == SwipeToDismissBoxValue.StartToEnd
-                            ) {
-                                vm.delete(rec.id)
+                        val state = rememberSwipeToDismissBoxState(
+                            confirmValueChange = { value ->
+                                if (value != SwipeToDismissBoxValue.Settled) {
+                                    vm.delete(rec.id)
+                                    true
+                                } else false
                             }
-                        }
+                        )
                         SwipeToDismissBox(
                             state = state,
                             backgroundContent = {
                                 Box(
                                     Modifier
                                         .fillMaxSize()
-                                        .background(VaultRed.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                                        .background(VaultRed, RoundedCornerShape(6.dp))
                                         .padding(horizontal = 16.dp),
                                     contentAlignment = Alignment.CenterEnd
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            Icons.Filled.Delete,
-                                            contentDescription = "Delete run",
-                                            tint = VaultBlack,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(Modifier.size(6.dp))
-                                        Text(
-                                            "DELETE",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = VaultBlack,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                    }
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = "Delete",
+                                        tint = VaultBlack
+                                    )
                                 }
                             }
                         ) {
-                            HistoryRow(rec) { onOpen(rec.id) }
+                            HistoryRow(
+                                rec = rec,
+                                onOpen = { onOpen(rec.id) },
+                                onDelete = { vm.delete(rec.id) }
+                            )
                         }
                     }
+                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
@@ -152,19 +132,18 @@ fun HistoryScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
 }
 
 @Composable
-private fun HistoryRow(rec: RunRecord, onClick: () -> Unit) {
+private fun HistoryRow(rec: RunRecord, onOpen: () -> Unit, onDelete: () -> Unit) {
     val statusColor = when (rec.status) {
         RunStatus.CONFIRMED -> VaultGreen
-        RunStatus.FAILED -> VaultRed
-        RunStatus.ABORTED -> VaultAmber
+        RunStatus.FAILED, RunStatus.ABORTED -> VaultRed
+        RunStatus.PAYING, RunStatus.RECON -> VaultAmber
         else -> VaultTextDim
     }
     Column(
         Modifier
             .fillMaxWidth()
             .background(VaultCard, RoundedCornerShape(6.dp))
-            .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
+            .clickable { onOpen() }
             .padding(12.dp)
     ) {
         Row(
@@ -172,32 +151,55 @@ private fun HistoryRow(rec: RunRecord, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                rec.bankName,
-                style = MaterialTheme.typography.titleMedium,
-                color = VaultText,
-                fontFamily = FontFamily.Monospace
-            )
-            MonoLabel(rec.status, statusColor)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    rec.bankName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = VaultText,
+                    fontFamily = FontFamily.Monospace
+                )
+                MonoLabel("${rec.rail} // ${rec.accountMasked}", VaultTextDim)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    money(rec.amountUsd, "$"),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = VaultGreen,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    rec.status,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = statusColor,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
         }
-        Spacer(Modifier.height(4.dp))
-        MonoLabel("${rec.accountMasked} // ${rec.rail}")
+
         Spacer(Modifier.height(6.dp))
+        HorizontalDivider(color = VaultAmber.copy(alpha = 0.15f))
+        Spacer(Modifier.height(6.dp))
+
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                money(rec.amountUsd, "$"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = VaultGreen,
-                fontFamily = FontFamily.Monospace
-            )
-            MonoLabel(stampOfDate(rec.createdAt))
-        }
-        if (!rec.reference.isNullOrBlank()) {
-            Spacer(Modifier.height(4.dp))
-            MonoLabel("REF ${rec.reference}", VaultAmber)
+            Column(Modifier.weight(1f)) {
+                MonoLabel(stampOfDate(rec.createdAt), VaultTextDim)
+                MonoLabel(
+                    "REF ${rec.reference ?: "— no gateway reference —"}",
+                    if (rec.reference != null) VaultGreen else VaultAmber
+                )
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = "Shred",
+                    tint = VaultTextDim,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }
