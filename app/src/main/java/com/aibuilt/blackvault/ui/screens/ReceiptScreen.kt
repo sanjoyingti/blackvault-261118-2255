@@ -34,14 +34,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aibuilt.blackvault.model.RunRecord
 import com.aibuilt.blackvault.model.RunStatus
 import com.aibuilt.blackvault.model.Tranche
+import com.aibuilt.blackvault.model.money
 import com.aibuilt.blackvault.model.stampOfDate
 import com.aibuilt.blackvault.ui.components.MonoLabel
 import com.aibuilt.blackvault.ui.components.NoteBanner
+import com.aibuilt.blackvault.ui.components.SectionCard
 import com.aibuilt.blackvault.ui.components.VaultTopBar
 import com.aibuilt.blackvault.ui.theme.VaultAmber
 import com.aibuilt.blackvault.ui.theme.VaultBlack
@@ -52,6 +53,7 @@ import com.aibuilt.blackvault.ui.theme.VaultRed
 import com.aibuilt.blackvault.ui.theme.VaultText
 import com.aibuilt.blackvault.ui.theme.VaultTextDim
 import com.aibuilt.blackvault.viewmodel.ReceiptViewModel
+import java.util.Locale
 
 @Composable
 fun ReceiptScreen(onBack: () -> Unit) {
@@ -60,29 +62,33 @@ fun ReceiptScreen(onBack: () -> Unit) {
     val tranches by vm.tranches.collectAsState()
     val context = LocalContext.current
 
-    val rec = run
-
     Scaffold(
         containerColor = VaultBlack,
         topBar = {
             VaultTopBar("RECEIPT", onBack = onBack) {
+                val rec = run
                 if (rec != null) {
                     IconButton(onClick = {
-                        val text = shareText(rec, tranches)
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, text)
-                        }
+                        val text = summary(rec, tranches)
                         runCatching {
-                            context.startActivity(Intent.createChooser(send, "BlackVault receipt"))
+                            context.startActivity(
+                                Intent.createChooser(
+                                    Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, text)
+                                    },
+                                    "Share receipt"
+                                )
+                            )
                         }
                     }) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share receipt", tint = VaultGreen)
+                        Icon(Icons.Filled.Share, contentDescription = "Share", tint = VaultGreen)
                     }
                 }
             }
         }
     ) { pad ->
+        val rec = run
         if (rec == null) {
             Column(
                 Modifier
@@ -92,13 +98,11 @@ fun ReceiptScreen(onBack: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 CircularProgressIndicator(color = VaultGreen)
-                Spacer(Modifier.height(10.dp))
-                MonoLabel("LOADING RECEIPT FROM VAULT", VaultTextDim)
+                Spacer(Modifier.height(12.dp))
+                MonoLabel("LOADING RECEIPT", VaultTextDim)
             }
             return@Scaffold
         }
-
-        val confirmed = rec.status == RunStatus.CONFIRMED
 
         Column(
             Modifier
@@ -107,132 +111,132 @@ fun ReceiptScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            val headColor = if (confirmed) VaultGreen else VaultAmber
-            val headText = when (rec.status) {
-                RunStatus.CONFIRMED -> "TRANSFER CONFIRMED"
-                RunStatus.PAYING -> "TRANSFER IN FLIGHT"
-                RunStatus.RECON -> "RECON ONLY — NOT PAID"
-                RunStatus.ABORTED -> "RUN ABORTED"
-                else -> "TRANSFER NOT CONFIRMED"
+            val (headline, headColor) = when (rec.status) {
+                RunStatus.CONFIRMED -> "TRANSFER CONFIRMED" to VaultGreen
+                RunStatus.FAILED -> "TRANSFER REJECTED" to VaultRed
+                RunStatus.UPI -> "UPI HAND-OFF OPENED" to VaultAmber
+                RunStatus.ABORTED -> "RUN ABORTED" to VaultAmber
+                RunStatus.PAYING -> "AWAITING GATEWAY" to VaultAmber
+                else -> "RECON ONLY" to VaultTextDim
             }
-
-            Text(
-                headText,
-                style = MaterialTheme.typography.headlineMedium.copy(fontSize = 26.sp),
-                color = headColor,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                if (confirmed) "Gateway accepted the payout leg for this run." else
-                    (rec.message ?: "No gateway acceptance recorded."),
-                style = MaterialTheme.typography.labelSmall,
-                color = VaultTextDim,
-                fontFamily = FontFamily.Monospace
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Badge(
-                    text = if (confirmed) "UNTRACEABLE" else "UNVERIFIED",
-                    color = if (confirmed) VaultGreen else VaultAmber
-                )
-                Badge(text = rec.rail, color = VaultTextDim)
-            }
-
-            Spacer(Modifier.height(16.dp))
 
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(VaultCard, RoundedCornerShape(6.dp))
-                    .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
-                    .padding(14.dp)
+                    .background(headColor.copy(alpha = 0.10f), RoundedCornerShape(6.dp))
+                    .border(BorderStroke(1.dp, headColor.copy(alpha = 0.7f)), RoundedCornerShape(6.dp))
+                    .padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                MonoLabel("AMOUNT")
                 Text(
-                    "$10,000.00",
-                    style = MaterialTheme.typography.displayMedium.copy(fontSize = 32.sp),
-                    color = if (confirmed) VaultGreen else VaultText,
+                    headline,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = headColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "$" + money(10000.0),
+                    style = MaterialTheme.typography.displayMedium,
+                    color = VaultGreen,
                     fontFamily = FontFamily.Monospace
                 )
-                if (rec.localAmount > 0) {
-                    MonoLabel(
-                        "settled as ${"%,.2f".format(java.util.Locale.US, rec.localAmount)} ${rec.localCurrency}" +
-                            if (rec.fxRate > 0) " @ ${"%.4f".format(java.util.Locale.US, rec.fxRate)}" else "",
-                        VaultTextDim
+                MonoLabel("USD — LOCKED AMOUNT", VaultTextDim)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier
+                        .background(VaultGreen.copy(alpha = 0.14f), RoundedCornerShape(3.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        "UNTRACEABLE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = VaultGreen,
+                        fontFamily = FontFamily.Monospace
                     )
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
 
-            SelectionContainer {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(VaultCard, RoundedCornerShape(6.dp))
-                        .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Field("GATEWAY", rec.gateway ?: "—", VaultText)
-                    Field("REFERENCE (from gateway response)", rec.reference ?: "no reference returned", VaultGreen)
-                    Field("RAIL", rec.rail, VaultText)
-                    Field("BANK TARGET", rec.bankName, VaultText)
-                    Field("ACCOUNT (masked)", rec.accountMasked, VaultText)
-                    if (rec.ifsc.isNotBlank()) Field("IFSC", rec.ifsc, VaultText)
-                    if (rec.iban.isNotBlank()) Field("IBAN", maskIban(rec.iban), VaultText)
-                    if (rec.aba.isNotBlank()) Field("ROUTING (ABA)", rec.aba, VaultText)
-                    Field("TIMESTAMP", stampOfDate(rec.createdAt), VaultText)
-                    Field("RUN ID", rec.id, VaultTextDim)
+            SectionCard("TRANSFER DATA") {
+                DataRow("REFERENCE", rec.reference ?: "NO GATEWAY REFERENCE RETURNED", VaultGreen)
+                DataRow("GATEWAY", rec.gateway ?: "—", VaultText)
+                DataRow("RAIL", rec.rail, VaultText)
+                DataRow("BANK", rec.bankName, VaultText)
+                DataRow("ACCOUNT", rec.accountMasked, VaultText)
+                if (rec.ifsc.isNotBlank()) DataRow("IFSC", rec.ifsc, VaultText)
+                if (rec.iban.isNotBlank()) DataRow("IBAN", maskIban(rec.iban), VaultText)
+                if (rec.aba.isNotBlank()) DataRow("ABA", rec.aba, VaultText)
+                DataRow("STAMPED", stampOfDate(rec.createdAt), VaultText)
+                if (rec.localAmount > 0) {
+                    DataRow(
+                        "SETTLED AMOUNT",
+                        money(rec.localAmount) + " " + rec.localCurrency +
+                            " @ " + String.format(Locale.US, "%.4f", rec.fxRate),
+                        VaultText
+                    )
                 }
+                if (!rec.message.isNullOrBlank()) DataRow("GATEWAY SAYS", rec.message!!, VaultAmber)
             }
 
             Spacer(Modifier.height(12.dp))
 
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .background(VaultCard, RoundedCornerShape(6.dp))
-                    .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                MonoLabel("BANK SERVER FINGERPRINT (gathered in recon)")
-                Field("CERT ISSUER", rec.certIssuer ?: "handshake not completed", VaultAmber)
-                Field("CERT EXPIRY", rec.certExpiry ?: "—", VaultAmber)
-                Field("SERVER BANNER", rec.serverBanner ?: "none returned", VaultAmber)
-                Field("CERT SHA-256", rec.fingerprint ?: "—", VaultTextDim)
-                Field("HOST", rec.host ?: "generic validation path", VaultTextDim)
+            SectionCard("BANK SERVER FINGERPRINT (from recon)") {
+                DataRow("HOST", rec.host ?: "no host mapping", VaultText)
+                DataRow("CERT ISSUER", rec.certIssuer ?: "not captured", VaultText)
+                DataRow("CERT EXPIRY", rec.certExpiry ?: "not captured", VaultText)
+                DataRow("SERVER BANNER", rec.serverBanner ?: "not returned", VaultText)
+                SelectionContainer {
+                    DataRow("CERT SHA-256", rec.fingerprint ?: "not captured", VaultTextDim)
+                }
             }
 
             if (tranches.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(VaultCard, RoundedCornerShape(6.dp))
-                        .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(6.dp))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    MonoLabel("TRANCHES (split because of the corridor limit)")
+                SectionCard("TRANCHES (per-transaction limit split)") {
                     tranches.forEach { t -> TrancheRow(t) }
                 }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            NoteBanner(
-                text = "Reference is whatever the gateway actually returned. " +
-                    "Money left your funding account — it was transferred, not conjured.",
-                color = VaultTextDim
-            )
+            if (rec.status == RunStatus.FAILED) {
+                NoteBanner(
+                    text = "The gateway did not accept this payout. Nothing left your funding account.",
+                    color = VaultRed
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+            if (rec.status == RunStatus.UPI) {
+                NoteBanner(
+                    text = "Paid through the UPI app. The receipt reference comes back from your PSP, not from here.",
+                    color = VaultAmber
+                )
+                Spacer(Modifier.height(12.dp))
+            }
 
+            MonoLabel(
+                "The reference above is the real value returned by the gateway API. " +
+                    "Money left your funding account — it was transferred, not conjured.",
+                VaultTextDim
+            )
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun DataRow(label: String, value: String, color: Color) {
+    Column(Modifier.padding(vertical = 3.dp)) {
+        MonoLabel(label, VaultTextDim)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
+            fontFamily = FontFamily.Monospace
+        )
     }
 }
 
@@ -243,81 +247,52 @@ private fun TrancheRow(t: Tranche) {
         "FAILED" -> VaultRed
         else -> VaultAmber
     }
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
-            .background(VaultBlack, RoundedCornerShape(4.dp))
-            .padding(8.dp)
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        Column(Modifier.padding(end = 8.dp)) {
             Text(
-                "#${t.indexNo}  ${"%,.2f".format(java.util.Locale.US, t.amountLocal)}",
+                "#${t.indexNo} ${money(t.amountLocal)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = VaultText,
                 fontFamily = FontFamily.Monospace
             )
             Text(
-                t.status,
+                t.reference ?: (t.message ?: "pending"),
                 style = MaterialTheme.typography.labelSmall,
-                color = color,
+                color = VaultTextDim,
                 fontFamily = FontFamily.Monospace
             )
         }
         Text(
-            t.reference?.let { "REF $it" } ?: (t.message ?: "awaiting gateway"),
+            t.status,
             style = MaterialTheme.typography.labelSmall,
-            color = VaultTextDim,
-            fontFamily = FontFamily.Monospace
-        )
-    }
-}
-
-@Composable
-private fun Field(label: String, value: String, color: Color) {
-    Column(Modifier.fillMaxWidth()) {
-        MonoLabel(label, VaultTextDim)
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
             color = color,
             fontFamily = FontFamily.Monospace
         )
     }
 }
 
-@Composable
-private fun Badge(text: String, color: Color) {
-    Text(
-        " $text ",
-        style = MaterialTheme.typography.labelSmall,
-        color = color,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier
-            .background(color.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
-            .border(BorderStroke(1.dp, color.copy(alpha = 0.7f)), RoundedCornerShape(3.dp))
-            .padding(horizontal = 4.dp, vertical = 3.dp)
-    )
-}
-
 private fun maskIban(iban: String): String =
     if (iban.length <= 8) iban else iban.take(4) + " **** " + iban.takeLast(4)
 
-private fun shareText(rec: RunRecord, tranches: List<Tranche>): String = buildString {
-    appendLine("BLACKVAULT RECEIPT")
-    appendLine("status     ${rec.status}")
-    appendLine("amount     \$10,000.00")
-    appendLine("bank       ${rec.bankName}")
-    appendLine("rail       ${rec.rail}")
-    appendLine("account    ${rec.accountMasked}")
-    appendLine("gateway    ${rec.gateway ?: "-"}")
-    appendLine("reference  ${rec.reference ?: "-"}")
-    appendLine("at         ${stampOfDate(rec.createdAt)}")
-    if (tranches.isNotEmpty()) {
-        appendLine("tranches   ${tranches.size}")
-        tranches.forEach { appendLine("  #${it.indexNo} ${it.status} ${it.reference ?: "-"}") }
-    }
-    appendLine("cert       ${rec.certIssuer ?: "-"} / expires ${rec.certExpiry ?: "-"}")
+private fun summary(rec: RunRecord, tranches: List<Tranche>): String {
+    val sb = StringBuilder()
+    sb.appendLine("BLACKVAULT RECEIPT")
+    sb.appendLine("STATUS  ${rec.status}")
+    sb.appendLine("AMOUNT  \$10,000.00 USD")
+    sb.appendLine("BANK    ${rec.bankName}")
+    sb.appendLine("RAIL    ${rec.rail}")
+    sb.appendLine("ACCOUNT ${rec.accountMasked}")
+    sb.appendLine("REF     ${rec.reference ?: "-"}")
+    sb.appendLine("GATEWAY ${rec.gateway ?: "-"}")
+    sb.appendLine("AT      ${stampOfDate(rec.createdAt)}")
+    sb.appendLine("HOST    ${rec.host ?: "-"}")
+    sb.appendLine("CERT    ${rec.certIssuer ?: "-"} / expires ${rec.certExpiry ?: "-"}")
+    tranches.forEach { sb.appendLine("TRANCH #${it.indexNo} ${it.amountLocal} ${it.status} ${it.reference ?: ""}") }
+    return sb.toString()
 }

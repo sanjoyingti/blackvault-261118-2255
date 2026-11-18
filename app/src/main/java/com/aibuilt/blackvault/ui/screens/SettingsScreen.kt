@@ -16,11 +16,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -35,7 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aibuilt.blackvault.data.CustomTarget
@@ -48,8 +55,11 @@ import com.aibuilt.blackvault.ui.components.TerminalField
 import com.aibuilt.blackvault.ui.components.VaultTopBar
 import com.aibuilt.blackvault.ui.theme.VaultAmber
 import com.aibuilt.blackvault.ui.theme.VaultBlack
+import com.aibuilt.blackvault.ui.theme.VaultCard
 import com.aibuilt.blackvault.ui.theme.VaultGreen
+import com.aibuilt.blackvault.ui.theme.VaultGrey
 import com.aibuilt.blackvault.ui.theme.VaultRed
+import com.aibuilt.blackvault.ui.theme.VaultText
 import com.aibuilt.blackvault.ui.theme.VaultTextDim
 import com.aibuilt.blackvault.viewmodel.SettingsViewModel
 
@@ -59,160 +69,223 @@ fun SettingsScreen(onBack: () -> Unit) {
     val keys by vm.keys.collectAsState()
     val motion by vm.motion.collectAsState()
     val webhook by vm.webhook.collectAsState()
-    val vpa by vm.vpa.collectAsState()
     val targets by vm.targets.collectAsState()
+    val vpa by vm.vpa.collectAsState()
     val shredded by vm.shredded.collectAsState()
 
-    var confirmShred by remember { mutableStateOf(false) }
+    var webhookText by remember(webhook) { mutableStateOf(webhook) }
+    var vpaText by remember(vpa) { mutableStateOf(vpa) }
+    var shredAsk by remember { mutableStateOf(false) }
+
+    var newName by remember { mutableStateOf("") }
+    var newHost by remember { mutableStateOf("") }
+    var newHint by remember { mutableStateOf("") }
+    var newRail by remember { mutableStateOf(Rail.INDIA_IMPS) }
 
     Scaffold(
         containerColor = VaultBlack,
-        topBar = { VaultTopBar("SETTINGS", onBack = onBack) }
+        topBar = { VaultTopBar("SETTINGS // CONFIG", onBack = onBack) }
     ) { pad ->
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(pad)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            if (shredded) {
+                NoteBanner("ALL LOGS SHREDDED — runs, tranches, targets and keys wiped", VaultGreen)
+                Spacer(Modifier.height(10.dp))
+            }
+
             NoteBanner(
-                text = "Keys are stored in EncryptedSharedPreferences. Nothing sensitive is kept in plain text.",
-                color = VaultTextDim
+                "Keys are stored in EncryptedSharedPreferences and are never shown in full. " +
+                    "Without a key for a rail the payout stays offline.",
+                VaultAmber
             )
 
-            if (shredded) {
-                NoteBanner(text = "ALL LOGS SHREDDED — Room wiped, encrypted records cleared", color = VaultGreen)
-            }
+            Spacer(Modifier.height(14.dp))
 
-            SectionCard(title = "INDIA RAIL — RAZORPAY X", accent = if (keys.indiaReady) VaultGreen else VaultAmber) {
-                SecretField("Razorpay key id", keys.razorpayId) { vm.save(SecureStore.K_RAZORPAY_ID, it) }
+            SectionCard("INDIA — RAZORPAY X (IMPS/NEFT)", accent = if (keys.indiaReady) VaultGreen else VaultAmber) {
+                KeyField("Key ID", keys.razorpayId) { vm.save(SecureStore.K_RAZORPAY_ID, it) }
                 Spacer(Modifier.height(8.dp))
-                SecretField("Razorpay key secret", keys.razorpaySecret) { vm.save(SecureStore.K_RAZORPAY_SECRET, it) }
+                KeyField("Key secret", keys.razorpaySecret) { vm.save(SecureStore.K_RAZORPAY_SECRET, it) }
                 Spacer(Modifier.height(8.dp))
-                SecretField("Razorpay X source account number", keys.razorpayAccount) {
+                KeyField("Source account number", keys.razorpayAccount, numeric = true) {
                     vm.save(SecureStore.K_RAZORPAY_ACC, it)
                 }
-                Spacer(Modifier.height(8.dp))
-                MonoLabel("— or use Cashfree instead —", VaultTextDim)
-                Spacer(Modifier.height(8.dp))
-                SecretField("Cashfree client id", keys.cashfreeId) { vm.save(SecureStore.K_CASHFREE_ID, it) }
-                Spacer(Modifier.height(8.dp))
-                SecretField("Cashfree client secret", keys.cashfreeSecret) { vm.save(SecureStore.K_CASHFREE_SECRET, it) }
-                Spacer(Modifier.height(8.dp))
-                MonoLabel(if (keys.indiaReady) "INDIA CORRIDOR LIVE" else "INDIA CORRIDOR NOT LIVE", VaultTextDim)
             }
 
-            SectionCard(title = "US RAIL — STRIPE ACH", accent = if (keys.usReady) VaultGreen else VaultAmber) {
-                SecretField("Stripe secret key", keys.stripeKey) { vm.save(SecureStore.K_STRIPE, it) }
+            Spacer(Modifier.height(10.dp))
+
+            SectionCard("INDIA — CASHFREE (alternative)") {
+                KeyField("Client ID", keys.cashfreeId) { vm.save(SecureStore.K_CASHFREE_ID, it) }
                 Spacer(Modifier.height(8.dp))
-                MonoLabel(if (keys.usReady) "US CORRIDOR LIVE" else "US CORRIDOR NOT LIVE", VaultTextDim)
+                KeyField("Client secret", keys.cashfreeSecret) { vm.save(SecureStore.K_CASHFREE_SECRET, it) }
             }
 
-            SectionCard(title = "PAKISTAN RAIL — PAYFAST", accent = if (keys.pkReady) VaultGreen else VaultAmber) {
-                SecretField("PayFast merchant id", keys.payfastMerchant) { vm.save(SecureStore.K_PAYFAST_MERCHANT, it) }
-                Spacer(Modifier.height(8.dp))
-                SecretField("PayFast secured key", keys.payfastSecured) { vm.save(SecureStore.K_PAYFAST_SECURED, it) }
-                Spacer(Modifier.height(8.dp))
-                MonoLabel(if (keys.pkReady) "PAKISTAN CORRIDOR LIVE" else "PAKISTAN CORRIDOR NOT LIVE", VaultTextDim)
+            Spacer(Modifier.height(10.dp))
+
+            SectionCard("US — STRIPE ACH", accent = if (keys.usReady) VaultGreen else VaultAmber) {
+                KeyField("Secret key (sk_live_…)", keys.stripeKey) { vm.save(SecureStore.K_STRIPE, it) }
             }
 
-            SectionCard(title = "UPI DEEP-LINK FALLBACK") {
-                LocalText(
+            Spacer(Modifier.height(10.dp))
+
+            SectionCard("PAKISTAN — PAYFAST", accent = if (keys.pkReady) VaultGreen else VaultAmber) {
+                KeyField("Merchant ID", keys.payfastMerchant) { vm.save(SecureStore.K_PAYFAST_MERCHANT, it) }
+                Spacer(Modifier.height(8.dp))
+                KeyField("Secured key", keys.payfastSecured) { vm.save(SecureStore.K_PAYFAST_SECURED, it) }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            SectionCard("UPI DEEP-LINK FALLBACK") {
+                TerminalField(
                     label = "Your VPA",
-                    initial = vpa,
-                    hint = "e.g. name@okhdfcbank — fires upi:// with the sheet",
-                    onValue = { vm.saveVpa(it) }
+                    value = vpaText,
+                    onChange = { vpaText = it },
+                    hint = "e.g. name@okhdfcbank — used by the UPI hand-off button"
                 )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { vm.saveVpa(vpaText) },
+                    shape = RoundedCornerShape(4.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = VaultGreen, contentColor = VaultBlack)
+                ) { Text("SAVE VPA", fontFamily = FontFamily.Monospace) }
             }
 
-            SectionCard(title = "STEALTH PANEL") {
+            Spacer(Modifier.height(10.dp))
+
+            SectionCard("STEALTH PANEL") {
                 Row(
                     Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    MonoLabel("PANEL MOTION", VaultTextDim)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "PANEL MOTION",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = VaultText,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        MonoLabel("animated pulse on the run screen", VaultTextDim)
+                    }
                     Switch(
                         checked = motion,
-                        onCheckedChange = { vm.setMotion(it) },
+                        onCheckedChange = vm::setMotion,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = VaultBlack,
                             checkedTrackColor = VaultGreen,
                             uncheckedThumbColor = VaultTextDim,
-                            uncheckedTrackColor = VaultBlack
+                            uncheckedTrackColor = VaultGrey
                         )
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                LocalText(
-                    label = "Webhook URL",
-                    initial = webhook,
-                    hint = "optional — POSTed with each finished run",
-                    onValue = { vm.setWebhook(it) }
-                )
             }
 
-            SectionCard(title = "CUSTOM TARGETS") {
-                var name by remember { mutableStateOf("") }
-                var host by remember { mutableStateOf("") }
-                var hint by remember { mutableStateOf("") }
-                var rail by remember { mutableStateOf(Rail.INDIA_IMPS) }
+            Spacer(Modifier.height(10.dp))
 
-                TerminalField("Bank name", name, { name = it })
+            SectionCard("WEBHOOK (optional)") {
+                TerminalField(
+                    label = "POST URL",
+                    value = webhookText,
+                    onChange = { webhookText = it },
+                    keyboard = KeyboardType.Uri,
+                    hint = "Fired on tranche completion with the reference"
+                )
                 Spacer(Modifier.height(8.dp))
-                TerminalField("Host / domain", host, { host = it.trim() }, hint = "recon runs against this real host")
+                Button(
+                    onClick = { vm.setWebhook(webhookText) },
+                    shape = RoundedCornerShape(4.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = VaultGreen, contentColor = VaultBlack)
+                ) { Text("SAVE WEBHOOK", fontFamily = FontFamily.Monospace) }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            SectionCard("CUSTOM TARGETS") {
+                if (targets.isEmpty()) {
+                    MonoLabel("No custom targets yet", VaultTextDim)
+                    Spacer(Modifier.height(8.dp))
+                } else {
+                    targets.forEach { t -> TargetRow(t) { vm.removeTarget(t.host) } }
+                    Spacer(Modifier.height(8.dp))
+                }
+                TerminalField(
+                    label = "Bank name",
+                    value = newName,
+                    onChange = { newName = it }
+                )
                 Spacer(Modifier.height(8.dp))
-                TerminalField("Match hint", hint, { hint = it.uppercase() }, hint = "IFSC prefix, PK IBAN code or ABA")
+                TerminalField(
+                    label = "Domain",
+                    value = newHost,
+                    onChange = { newHost = it },
+                    keyboard = KeyboardType.Uri,
+                    hint = "e.g. bank.example"
+                )
+                Spacer(Modifier.height(8.dp))
+                TerminalField(
+                    label = "Prefix / IBAN code / ABA",
+                    value = newHint,
+                    onChange = { newHint = it },
+                    hint = "4-letter IFSC prefix, IBAN bank code or routing number"
+                )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Rail.entries.forEach { r ->
-                        OutlinedButton(
-                            onClick = { rail = r },
-                            border = BorderStroke(1.dp, if (rail == r) VaultGreen else VaultTextDim),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                r.currency,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (rail == r) VaultGreen else VaultTextDim,
-                                fontFamily = FontFamily.Monospace
+                    Rail.entries.forEach { rail ->
+                        FilterChip(
+                            selected = newRail == rail,
+                            onClick = { newRail = rail },
+                            label = {
+                                Text(
+                                    rail.name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = VaultGreen.copy(alpha = 0.20f),
+                                selectedLabelColor = VaultGreen,
+                                labelColor = VaultTextDim
                             )
-                        }
+                        )
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = {
-                        vm.addTarget(name, host, rail, hint)
-                        name = ""
-                        host = ""
-                        hint = ""
+                        vm.addTarget(newName, newHost, newRail, newHint)
+                        newName = ""
+                        newHost = ""
+                        newHint = ""
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = VaultGreen, contentColor = VaultBlack),
                     shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("ADD TARGET", fontFamily = FontFamily.Monospace)
-                }
-
-                if (targets.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    targets.forEach { t -> TargetRow(t) { vm.removeTarget(t.host) } }
-                }
+                    colors = ButtonDefaults.buttonColors(containerColor = VaultGreen, contentColor = VaultBlack)
+                ) { Text("ADD TARGET", fontFamily = FontFamily.Monospace) }
             }
 
-            SectionCard(title = "DANGER ZONE", accent = VaultRed) {
-                MonoLabel("Wipes Room, tranches, custom targets and every stored key.", VaultTextDim)
+            Spacer(Modifier.height(10.dp))
+
+            SectionCard("DANGER ZONE", accent = VaultRed) {
+                Text(
+                    "SHRED ALL LOGS",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = VaultRed,
+                    fontFamily = FontFamily.Monospace
+                )
+                MonoLabel("deletes every run, tranche, custom target, stored key and the UPI VPA", VaultTextDim)
                 Spacer(Modifier.height(8.dp))
                 Button(
-                    onClick = { confirmShred = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = VaultRed, contentColor = VaultBlack),
+                    onClick = { shredAsk = true },
                     shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    colors = ButtonDefaults.buttonColors(containerColor = VaultRed, contentColor = VaultBlack)
                 ) {
-                    Text("SHRED ALL LOGS", fontFamily = FontFamily.Monospace)
+                    Icon(Icons.Filled.Delete, contentDescription = null, tint = VaultBlack)
+                    Spacer(Modifier.height(0.dp))
+                    Text("  SHRED", fontFamily = FontFamily.Monospace)
                 }
             }
 
@@ -220,27 +293,29 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    if (confirmShred) {
+    if (shredAsk) {
         AlertDialog(
-            onDismissRequest = { confirmShred = false },
-            containerColor = VaultBlack,
-            title = { Text("SHRED EVERYTHING?", fontFamily = FontFamily.Monospace, color = VaultGreen) },
+            onDismissRequest = { shredAsk = false },
+            containerColor = VaultCard,
+            titleContentColor = VaultRed,
+            textContentColor = VaultText,
+            title = { Text("SHRED ALL LOGS?", fontFamily = FontFamily.Monospace) },
             text = {
                 Text(
-                    "History, tranches, custom targets and saved gateway keys are removed.",
-                    fontFamily = FontFamily.Monospace,
-                    color = VaultTextDim,
-                    style = MaterialTheme.typography.bodySmall
+                    "Every stored run and key is wiped. Gateways stay configured on their side.",
+                    fontFamily = FontFamily.Monospace
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     vm.shred()
-                    confirmShred = false
+                    webhookText = ""
+                    vpaText = ""
+                    shredAsk = false
                 }) { Text("SHRED", color = VaultRed, fontFamily = FontFamily.Monospace) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmShred = false }) {
+                TextButton(onClick = { shredAsk = false }) {
                     Text("CANCEL", color = VaultTextDim, fontFamily = FontFamily.Monospace)
                 }
             }
@@ -249,40 +324,38 @@ fun SettingsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun SecretField(label: String, initial: String, onValue: (String) -> Unit) {
-    var value by remember(initial) { mutableStateOf(initial) }
+private fun KeyField(
+    label: String,
+    value: String,
+    numeric: Boolean = false,
+    onChange: (String) -> Unit
+) {
+    var visible by remember { mutableStateOf(false) }
     TerminalField(
         label = label,
         value = value,
-        onChange = {
-            value = it
-            onValue(it)
-        },
-        transformation = PasswordVisualTransformation(),
-        hint = if (initial.isBlank()) "not set" else "stored encrypted"
+        onChange = onChange,
+        keyboard = if (numeric) KeyboardType.Number else KeyboardType.Text,
+        transformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailing = {
+            IconButton(onClick = { visible = !visible }) {
+                Icon(
+                    if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = if (visible) "Hide" else "Show",
+                    tint = VaultGreen
+                )
+            }
+        }
     )
 }
 
 @Composable
-private fun LocalText(label: String, initial: String, hint: String, onValue: (String) -> Unit) {
-    var value by remember(initial) { mutableStateOf(initial) }
-    TerminalField(
-        label = label,
-        value = value,
-        onChange = {
-            value = it
-            onValue(it)
-        },
-        hint = hint
-    )
-}
-
-@Composable
-private fun TargetRow(target: CustomTarget, onDelete: () -> Unit) {
+private fun TargetRow(target: CustomTarget, onRemove: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .background(VaultBlack, RoundedCornerShape(4.dp))
+            .border(BorderStroke(1.dp, VaultGrey), RoundedCornerShape(4.dp))
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -290,21 +363,13 @@ private fun TargetRow(target: CustomTarget, onDelete: () -> Unit) {
             Text(
                 target.name,
                 style = MaterialTheme.typography.bodySmall,
-                color = VaultGreen,
+                color = VaultText,
                 fontFamily = FontFamily.Monospace
             )
             MonoLabel("${target.host} // ${target.rail} // ${target.keyHint}", VaultTextDim)
         }
-        Button(
-            onClick = onDelete,
-            colors = ButtonDefaults.buttonColors(containerColor = VaultRed, contentColor = VaultBlack),
-            shape = RoundedCornerShape(3.dp)
-        ) {
-            androidx.compose.material3.Icon(
-                Icons.Filled.Delete,
-                contentDescription = "Remove target",
-                tint = VaultBlack
-            )
+        IconButton(onClick = onRemove) {
+            Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = VaultRed)
         }
     }
 }
